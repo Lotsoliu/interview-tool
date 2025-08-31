@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { InterviewRecord } from '../../../types/interview'
+import { generateAdaptivePrompt, detectPositionType } from '../../../lib/promptTemplates'
 
 const DOUBAO_API_URL = process.env.DOUBAO_API_URL || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
 const DOUBAO_API_KEY = process.env.DOUBAO_API_KEY || 'a96ad080-652f-4a6d-aa22-616cede91d37'
@@ -12,37 +13,16 @@ export async function POST(request: NextRequest) {
     const interview: InterviewRecord = await request.json()
     console.log('📝 面试记录:', { company: interview.company, position: interview.position })
     
-    const prompt = `
-请分析以下面试记录，并提供专业的反馈建议。请逐步思考并输出分析过程：
-
-公司：${interview.company}
-职位：${interview.position}
-面试时间：${interview.interviewDate}
-面试过程记录：
-${interview.interviewProcess}
-
-请按照以下步骤进行分析，每步都要输出思考过程：
-
-第一步：分析面试表现优点
-第二步：识别需要改进的地方
-第三步：提出具体的改进建议
-第四步：给出整体评分和总结
-
-最后请以JSON格式返回完整结果，格式如下：
-{
-  "strengths": ["优点1", "优点2", "优点3"],
-  "weaknesses": ["缺点1", "缺点2", "缺点3"],
-  "improvements": [
-    {
-      "title": "改进项标题",
-      "description": "详细描述",
-      "priority": "high/medium/low"
-    }
-  ],
-  "overallScore": 8,
-  "summary": "整体评价和建议"
-}
-`
+    // 检测职位类型并生成自适应提示词
+    const positionType = detectPositionType(interview.position)
+    console.log('📊 检测到职位类型:', positionType)
+    
+    const prompt = generateAdaptivePrompt({
+      company: interview.company,
+      position: interview.position,
+      interviewDate: interview.interviewDate,
+      interviewProcess: interview.interviewProcess
+    })
 
     console.log('📤 发送请求到豆包API...')
     const response = await fetch(DOUBAO_API_URL, {
@@ -130,6 +110,15 @@ ${interview.interviewProcess}
                   // 提取内容
                   if (data.choices && data.choices[0] && data.choices[0].delta && data.choices[0].delta.content) {
                     const content = data.choices[0].delta.content
+                    
+                    // 使用增强解析器处理内容，增强用户体验
+                    if (content.includes('优点') || content.includes('优势')) {
+                      console.log('📝 检测到优点分析内容')
+                    }
+                    if (content.includes('改进') || content.includes('建议')) {
+                      console.log('📝 检测到改进建议内容')
+                    }
+                    
                     console.log('📝 提取到内容:', content)
                     
                     // 发送给前端

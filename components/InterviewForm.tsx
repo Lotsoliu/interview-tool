@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { InterviewRecord } from '../types/interview'
 import { analyzeInterview, analyzeInterviewStreamAPI } from '../lib/doubao'
 import StreamingAnalysis from './StreamingAnalysis'
 import { normalizeDate } from '../lib/dateUtils'
+import { smartPrefillService, InterviewType } from '../lib/smartPrefill'
+import { ChevronDown, Lightbulb, FileText, Sparkles } from 'lucide-react'
 
 interface InterviewFormProps {
   onSave: (interview: InterviewRecord) => void
@@ -23,10 +25,53 @@ export default function InterviewForm({ onSave, onCancel }: InterviewFormProps) 
   const [streamingContent, setStreamingContent] = useState('')
   const [showStreaming, setShowStreaming] = useState(false)
   const [useStreaming, setUseStreaming] = useState(true)
+  
+  // 智能预填充相关状态
+  const [companySuggestions, setCompanySuggestions] = useState<string[]>([])
+  const [positionSuggestions, setPositionSuggestions] = useState<string[]>([])
+  const [showCompanySuggestions, setShowCompanySuggestions] = useState(false)
+  const [showPositionSuggestions, setShowPositionSuggestions] = useState(false)
+  const [detectedInterviewType, setDetectedInterviewType] = useState<InterviewType>('general')
+  const [showTemplate, setShowTemplate] = useState(false)
+  const [preparationTips, setPreparationTips] = useState<string[]>([])
+  
+  const companyInputRef = useRef<HTMLInputElement>(null)
+  const positionInputRef = useRef<HTMLInputElement>(null)
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
+    
+    // 智能预填充逻辑
+    if (name === 'company') {
+      setShowCompanySuggestions(value.length > 0)
+    } else if (name === 'position') {
+      setShowPositionSuggestions(value.length > 0)
+    }
+  }
+
+  // 选择公司建议
+  const handleCompanySelect = (company: string) => {
+    setFormData(prev => ({ ...prev, company }))
+    setShowCompanySuggestions(false)
+    smartPrefillService.updateSuggestions(company, formData.position)
+  }
+
+  // 选择职位建议
+  const handlePositionSelect = (position: string) => {
+    setFormData(prev => ({ ...prev, position }))
+    setShowPositionSuggestions(false)
+    smartPrefillService.updateSuggestions(formData.company, position)
+  }
+
+  // 使用模板
+  const handleUseTemplate = () => {
+    const template = smartPrefillService.getTemplateByType(detectedInterviewType)
+    setFormData(prev => ({ 
+      ...prev, 
+      interviewProcess: prev.interviewProcess + template 
+    }))
+    setShowTemplate(false)
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -149,7 +194,7 @@ export default function InterviewForm({ onSave, onCancel }: InterviewFormProps) 
       <h3 className="text-xl font-semibold mb-4">添加面试记录</h3>
       
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
+        <div className="relative" ref={companyInputRef}>
           <label htmlFor="company" className="block text-sm font-medium text-gray-700 mb-1">
             公司名称 *
           </label>
@@ -159,15 +204,42 @@ export default function InterviewForm({ onSave, onCancel }: InterviewFormProps) 
             name="company"
             value={formData.company}
             onChange={handleInputChange}
+            onFocus={() => setShowCompanySuggestions(true)}
             className="input-field"
             placeholder="请输入公司名称"
             required
           />
+          {showCompanySuggestions && companySuggestions.length > 0 && (
+            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+              {companySuggestions
+                .filter(company => company.toLowerCase().includes(formData.company.toLowerCase()))
+                .slice(0, 8)
+                .map((company, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => handleCompanySelect(company)}
+                  className="w-full px-4 py-2 text-left hover:bg-blue-50 hover:text-blue-700 border-b border-gray-100 last:border-b-0"
+                >
+                  {company}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        <div>
+        <div className="relative" ref={positionInputRef}>
           <label htmlFor="position" className="block text-sm font-medium text-gray-700 mb-1">
             应聘职位 *
+            {detectedInterviewType !== 'general' && (
+              <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-700 rounded-full">
+                {detectedInterviewType === 'technical' && '💻 技术岗位'}
+                {detectedInterviewType === 'product' && '📦 产品岗位'}
+                {detectedInterviewType === 'business' && '💼 业务岗位'}
+                {detectedInterviewType === 'design' && '🎨 设计岗位'}
+                {detectedInterviewType === 'hr' && '👥 HR岗位'}
+              </span>
+            )}
           </label>
           <input
             type="text"
@@ -175,10 +247,28 @@ export default function InterviewForm({ onSave, onCancel }: InterviewFormProps) 
             name="position"
             value={formData.position}
             onChange={handleInputChange}
+            onFocus={() => setShowPositionSuggestions(true)}
             className="input-field"
             placeholder="请输入应聘职位"
             required
           />
+          {showPositionSuggestions && positionSuggestions.length > 0 && (
+            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+              {positionSuggestions
+                .filter(position => position.toLowerCase().includes(formData.position.toLowerCase()))
+                .slice(0, 8)
+                .map((position, index) => (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => handlePositionSelect(position)}
+                  className="w-full px-4 py-2 text-left hover:bg-blue-50 hover:text-blue-700 border-b border-gray-100 last:border-b-0"
+                >
+                  {position}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div>
@@ -197,9 +287,83 @@ export default function InterviewForm({ onSave, onCancel }: InterviewFormProps) 
         </div>
 
         <div>
-          <label htmlFor="interviewProcess" className="block text-sm font-medium text-gray-700 mb-1">
-            面试过程记录 *
-          </label>
+          <div className="flex items-center justify-between mb-1">
+            <label htmlFor="interviewProcess" className="block text-sm font-medium text-gray-700">
+              面试过程记录 *
+            </label>
+            <div className="flex space-x-2">
+              {detectedInterviewType !== 'general' && (
+                <button
+                  type="button"
+                  onClick={() => setShowTemplate(!showTemplate)}
+                  className="flex items-center space-x-1 text-xs text-blue-600 hover:text-blue-700"
+                >
+                  <FileText size={14} />
+                  <span>使用模板</span>
+                </button>
+              )}
+              {preparationTips.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowTemplate(!showTemplate)}
+                  className="flex items-center space-x-1 text-xs text-green-600 hover:text-green-700"
+                >
+                  <Lightbulb size={14} />
+                  <span>准备建议</span>
+                </button>
+              )}
+            </div>
+          </div>
+          
+          {/* 模板和建议面板 */}
+          {showTemplate && (
+            <div className="mb-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 面试模板 */}
+                {detectedInterviewType !== 'general' && (
+                  <div>
+                    <h4 className="flex items-center text-sm font-medium text-blue-900 mb-2">
+                      <FileText size={16} className="mr-1" />
+                      {detectedInterviewType === 'technical' && '技术面试模板'}
+                      {detectedInterviewType === 'product' && '产品面试模板'}
+                      {detectedInterviewType === 'business' && '业务面试模板'}
+                      {detectedInterviewType === 'design' && '设计面试模板'}
+                      {detectedInterviewType === 'hr' && 'HR面试模板'}
+                    </h4>
+                    <p className="text-xs text-blue-700 mb-2">使用结构化模板记录面试过程</p>
+                    <button
+                      type="button"
+                      onClick={handleUseTemplate}
+                      className="w-full px-3 py-2 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                    >
+                      添加模板到输入框
+                    </button>
+                  </div>
+                )}
+                
+                {/* 准备建议 */}
+                {preparationTips.length > 0 && (
+                  <div>
+                    <h4 className="flex items-center text-sm font-medium text-green-900 mb-2">
+                      <Lightbulb size={16} className="mr-1" />
+                      面试准备建议
+                    </h4>
+                    <div className="max-h-32 overflow-y-auto">
+                      <ul className="space-y-1">
+                        {preparationTips.slice(0, 5).map((tip, index) => (
+                          <li key={index} className="text-xs text-green-700 flex items-start">
+                            <span className="text-green-500 mr-1">•</span>
+                            <span>{tip}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
           <textarea
             id="interviewProcess"
             name="interviewProcess"

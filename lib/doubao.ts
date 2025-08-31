@@ -1,4 +1,5 @@
 import { InterviewRecord, InterviewAnalysis } from '../types/interview'
+import { AdvancedResultParser } from './enhancedParser'
 
 const DOUBAO_API_URL = process.env.NEXT_PUBLIC_DOUBAO_API_URL || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
 const DOUBAO_API_KEY = process.env.NEXT_PUBLIC_DOUBAO_API_KEY || 'a96ad080-652f-4a6d-aa22-616cede91d37'
